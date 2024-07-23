@@ -19,7 +19,10 @@ router.post('/', auth, async (req: AuthRequest, res) => {
             user: userId
         });
         await post.save();
-        res.status(201).send(post);
+
+        const populatedPost = await Post.findById(post._id).populate('user', 'name');
+
+        res.status(201).send(populatedPost);
     } catch (error) {
         if (error instanceof Error) {
             res.status(400).send(error.message);
@@ -32,7 +35,22 @@ router.post('/', auth, async (req: AuthRequest, res) => {
 // Get Posts
 router.get('/', async (req, res) => {
     try {
-        const posts = await Post.find().populate('user', 'name').populate('comments.user', 'name').populate('comments.replies.user', 'name');
+        const posts = await Post.find()
+            .populate('user', 'name')
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'user',
+                    select: 'name'
+                }
+            })
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'replies.user',
+                    select: 'name'
+                }
+            });
         res.send(posts);
     } catch (error) {
         if (error instanceof Error) {
@@ -43,7 +61,7 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Comment on Post
+// Add Comment to Post
 router.post('/:postId/comment', auth, async (req: AuthRequest, res) => {
     try {
         const { text } = req.body;
@@ -55,11 +73,26 @@ router.post('/:postId/comment', auth, async (req: AuthRequest, res) => {
         if (!post) {
             return res.status(404).send('Post not found');
         }
-        const CommentModel = mongoose.model<IComment>('Comment', CommentSchema);
-        const comment = new CommentModel({ user: userId, text, replies: [] });
+        const comment = {
+            user: userId,
+            text,
+            replies: []
+        };
         post.comments.push(comment);
         await post.save();
-        res.status(201).send(post);
+
+        const updatedPost = await Post.findById(req.params.postId)
+            .populate('user', 'name avatar')
+            .populate({
+                path: 'comments.user',
+                select: 'name avatar'
+            })
+            .populate({
+                path: 'comments.replies.user',
+                select: 'name avatar'
+            });
+
+        res.status(201).send(updatedPost);
     } catch (error) {
         if (error instanceof Error) {
             res.status(400).send(error.message);
@@ -69,7 +102,7 @@ router.post('/:postId/comment', auth, async (req: AuthRequest, res) => {
     }
 });
 
-// Reply to Comment
+// Add Reply to Comment
 router.post('/:postId/comment/:commentId/reply', auth, async (req: AuthRequest, res) => {
     try {
         const { text } = req.body;
@@ -85,11 +118,26 @@ router.post('/:postId/comment/:commentId/reply', auth, async (req: AuthRequest, 
         if (!comment) {
             return res.status(404).send('Comment not found');
         }
-        const ReplyModel = mongoose.model<IReply>('Reply', ReplySchema);
-        const reply = new ReplyModel({ user: userId, text });
+        const reply = {
+            user: userId,
+            text
+        } as IReply;
         comment.replies.push(reply);
         await post.save();
-        res.status(201).send(post);
+
+        // Populate the replies and user information
+        const updatedPost = await Post.findById(req.params.postId)
+            .populate('user', 'name avatar')
+            .populate({
+                path: 'comments.user',
+                select: 'name avatar'
+            })
+            .populate({
+                path: 'comments.replies.user',
+                select: 'name avatar'
+            });
+
+        res.status(201).send(updatedPost);
     } catch (error) {
         if (error instanceof Error) {
             res.status(400).send(error.message);
